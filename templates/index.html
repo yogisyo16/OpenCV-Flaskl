@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCV Image Editor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Arvo&family=Inter:opsz@14..32&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static',filename='src/global.css') }}">
+    <link rel="stylesheet" href="{{url_for('static',filename='dist/output.css')}}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'inter', sans-serif;
+        }
+        #navbar-logo {
+            font-family: 'Arvo', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <main class="flex flex-col gap-2 min-h-screen">
+        <nav class="flex flex-row justify-center items-center min-w-full bg-amber-300 p-2 md:p-5">
+            <h1 id="navbar-logo" class="text-2xl font-bold p-2 bg-amber-300 border-1 rounded-2xl hover:scale-110 hover:shadow-2xl hover:duration-1000 transition-all duration-500 cursor-default">OpenCV Image Editor</h1>
+        </nav>
+        <div class="flex flex-col items-center gap-4 p-4">
+            <h2 class="text-4xl font-bold text-gray-800">Image Editor</h2>
+            <div class="flex flex-col md:flex-row md:w-full md:max-w-5xl gap-4 p-2">
+                <form id="imageForm" method="POST" enctype="multipart/form-data" class="w-full max-w-2xl bg-white p-6 rounded-lg shadow-md">
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2" for="fileInput">
+                            Upload Image
+                        </label>
+                        <input type="file" id="fileInput" name="file" accept="image/*" 
+                            class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" required>
+                    </div>
+                    <div id="brightnessControl" class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2" for="brightness_value">
+                            Brightness
+                        </label>
+                        <input type="range" id="brightness_value" name="brightness_value" min="-255" max="255" value="0" 
+                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        <span id="brightnessValueDisplay" class="text-sm text-gray-600">0</span>
+                    </div>
+                    <div id="contrastControl" class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2" for="contrast_value">
+                            Contrast
+                        </label>
+                        <input type="range" id="contrast_value" name="contrast_value" min="0.1" max="3.0" step="0.1" value="1.0" 
+                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        <span id="contrastValueDisplay" class="text-sm text-gray-600">1.0</span>
+                    </div>
+                    <div id="blurControl" class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2" for="blur_value">
+                            Blur Intensity
+                        </label>
+                        <input type="range" id="blur_value" name="blur_value" min="1" max="31" step="2" value="1" 
+                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        <span id="blurValueDisplay" class="text-sm text-gray-600">1</span>
+                    </div>
+                    <div class="mb-4 space-y-2">
+                        <div class="flex items-center">
+                            <input id="grayscale" name="grayscale" type="checkbox" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                            <label for="grayscale" class="ml-2 block text-sm text-gray-700">Convert to Grayscale</label>
+                        </div>
+                        <div class="flex items-center">
+                            <input id="edge" name="edge" type="checkbox" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                            <label for="edge" class="ml-2 block text-sm text-gray-700">Edge Detection</label>
+                        </div>
+                    </div>
+                    <button type="submit" formaction="/download" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                        Download Image
+                    </button>
+                </form>
+                
+                <div id="previewSection" class="w-full justify-center max-w-2xl bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">Preview</h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="border p-2 rounded-lg">
+                            <h4 class="text-lg font-semibold text-center mb-2">Original</h4>
+                            <img id="originalPreview" src="" alt="Original" class="max-h-96 mx-auto rounded-lg border border-gray-300" style="display: none;">
+                        </div>
+                        <div class="border p-2 rounded-lg place-self-start md:place-self-auto ">
+                            <h4 class="text-lg font-semibold text-center mb-2">Preview</h4>
+                            <img id="processedPreview" src="" alt="Processed" class="max-h-96 mx-auto rounded-lg border border-gray-300" style="display: none;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <script>
+        let originalImageData = null;
+        let previewTimeout = null;
+        
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+
+            // slider
+            const brightnessSlider = document.getElementById('brightness_value');
+            const contrastSlider = document.getElementById('contrast_value');
+            const blurSlider = document.getElementById('blur_value');
+
+            // checkbox
+            const grayscaleCheckbox = document.getElementById('grayscale');
+            const edgeCheckbox = document.getElementById('edge');
+            
+            // display number
+            const brightnessValueDisplay = document.getElementById('brightnessValueDisplay');
+            const contrastValueDisplay = document.getElementById('contrastValueDisplay');
+            const blurValueDisplay = document.getElementById('blurValueDisplay');
+
+            if (file && file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                // slider and checkbox
+                brightnessSlider.value = 0;
+                contrastSlider.value = 1;
+                blurSlider.value = 1;
+                grayscaleCheckbox.checked = false;
+                edgeCheckbox.checked = false;
+                
+                // display
+                brightnessValueDisplay.textContent = 0;
+                contrastValueDisplay.textContent = 1;
+                blurValueDisplay.textContent = 1;
+                
+                // image
+                originalImageData = e.target.result;
+                imagePreview.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+            }
+            
+            if (originalImageData) {
+                updatePreview();
+            }
+        });
+        document.getElementById('brightness_value').addEventListener('input', function(e) {
+            document.getElementById('brightnessValueDisplay').textContent = e.target.value;
+            updatePreview();
+        });
+
+        document.getElementById('contrast_value').addEventListener('input', function(e) {
+            document.getElementById('contrastValueDisplay').textContent = e.target.value;
+            updatePreview();
+        });
+
+        document.getElementById('blur_value').addEventListener('input', function(e) {
+            document.getElementById('blurValueDisplay').textContent = e.target.value;
+            updatePreview();
+        });
+
+        document.getElementById('grayscale').addEventListener('change', updatePreview);
+        document.getElementById('edge').addEventListener('change', updatePreview);
+
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    originalImageData = e.target.result;
+                    document.getElementById('originalPreview').src = originalImageData;
+                    document.getElementById('originalPreview').style.display = 'block';
+                    document.getElementById('processedPreview').style.display = 'block';
+                    updatePreview();
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        function updatePreview() {
+            if (previewTimeout) {
+                clearTimeout(previewTimeout);
+            }
+            
+            previewTimeout = setTimeout(() => {
+                const formData = new FormData();
+                
+                const fileInput = document.getElementById('fileInput');
+                if (fileInput.files && fileInput.files[0]) {
+                    formData.append('file', fileInput.files[0]);
+                } else if (originalImageData) {
+                    const blob = dataURLtoBlob(originalImageData);
+                    formData.append('file', blob, 'preview.jpg');
+                } else {
+                    return;
+                }
+                
+                formData.append('brightness_value', document.getElementById('brightness_value').value);
+                formData.append('contrast_value', document.getElementById('contrast_value').value);
+                formData.append('blur_value', document.getElementById('blur_value').value);
+                formData.append('grayscale', document.getElementById('grayscale').checked);
+                formData.append('edge', document.getElementById('edge').checked);
+                
+                fetch('/preview', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error(data.error);
+                        return;
+                    }
+                    document.getElementById('processedPreview').src = data.processed_image;
+                    document.getElementById('originalPreview').src = data.original_image;
+                    document.getElementById('originalPreview').style.display = 'block';
+                    document.getElementById('processedPreview').style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+            }, 200);
+        }
+        
+        function dataURLtoBlob(dataurl) {
+            var arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
+                bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+            while(n--){
+                u8arr[n] = bstr.charCodeAt(n);
+            }
+            return new Blob([u8arr], {type:mime});
+        }
+    </script>
+</body>
+</html>
